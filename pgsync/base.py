@@ -144,6 +144,7 @@ class Base(object):
         self.__materialized_views: dict = {}
         self.__tables: dict = {}
         self.__columns: dict = {}
+        self.__replica_identity: dict = {}
         self.verbose: bool = verbose
         self._conn = None
 
@@ -303,6 +304,88 @@ class Base(object):
                 [column["name"] for column in columns]
             )
         return self.__columns[(table, schema)]
+
+    def get_composite_unique_index(
+        self,
+        schema: str,
+        table: str,
+        refer_table1: str,
+        refer_table2: str,
+    ):
+        """Find and return unique indexes with refer_table1 and refer_table2
+        as foreign keys in table.
+        """
+        indexes = self.indices(table, schema)
+        model: sa.sql.Alias = self.models(table, schema)
+
+        for index in indexes:
+            if not index["unique"]:
+                continue
+
+            fk_columns = {
+                refer_table1: None,
+                refer_table2: None,
+            }
+            for column in index["column_names"]:
+                c = model.c[column]
+                if c.nullable:
+                    continue
+                fk = [fk for fk in c.foreign_keys][0]
+                if fk:
+                    if fk.column.table.name == refer_table1:
+                        fk_columns[refer_table1] = column
+                    elif fk.column.table.name == refer_table2:
+                        fk_columns[refer_table2] = column
+
+            if all(fk_columns.values()):
+                return (index["name"], sorted(fk_columns.values()))
+
+        return (None, [])
+
+    def replica_identity(self, schema: str, table: str) -> str:
+        """Get the replica identity for a table.
+
+        Returns:
+            * d: default (primary key, if any)
+            * n: nothing
+            * f: all columns
+            * i: index with indisreplident set
+
+        see https://www.postgresql.org/docs/current/catalog-pg-class.html
+        """
+        if (table, schema) not in self.__replica_identity:
+            pg_class = sa.Table(
+                "pg_class",
+                sa.MetaData(),
+                sa.Column("oid", sa.String),
+                sa.Column("relnamespace", sa.String),
+                sa.Column("relname", sa.String),
+                sa.Column("relkind", sa.String),
+                sa.Column("relreplident", sa.String),
+            )
+
+            pg_namespace = sa.Table(
+                "pg_namespace",
+                sa.MetaData(),
+                sa.Column("oid", sa.String),
+                sa.Column("nspname", sa.String),
+            )
+
+            self.__replica_identity[(table, schema)] = self.fetchone(
+                sa.sql.select([pg_class.c.relreplident])
+                .select_from(
+                    pg_class.join(
+                        pg_namespace,
+                        pg_class.c.relnamespace == pg_namespace.c.oid,
+                    )
+                )
+                .where(
+                    (pg_class.c.relkind == "r")
+                    & (pg_namespace.c.nspname == schema)
+                    & (pg_class.c.relname == table)
+                )
+            )[pg_class.c.relreplident]
+        return self.__replica_identity[(table, schema)]
 
     def truncate_table(self, table: str, schema: str = DEFAULT_SCHEMA) -> None:
         """Truncate a table.

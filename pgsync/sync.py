@@ -36,6 +36,7 @@ from .exc import (
     InvalidTGOPError,
     PrimaryKeyNotFoundError,
     RDSError,
+    ReplicaIdentityError,
     SchemaError,
 )
 from .node import Node, Tree
@@ -190,6 +191,43 @@ class Sync(Base, metaclass=Singleton):
                 if not model.primary_keys:
                     raise PrimaryKeyNotFoundError(
                         f"No primary key(s) for base table: {table}"
+                    )
+
+            # ensure through_table have one primary_key or unique_key.
+            # if table has only unique_key, make sure replica identity is set.
+            if node.relationship.throughs:
+                through: Node = node.relationship.throughs[0]
+                model: sa.sql.Alias = self.models(
+                    through.table, through.schema
+                )
+                index_name, primary_keys = self.get_composite_unique_index(
+                    through.schema,
+                    through.table,
+                    through.parent.table,
+                    through.parent.parent.table,
+                )
+
+                if model.primary_key:
+                    pass
+                elif index_name and set(through.model.primary_keys) == set(
+                    primary_keys
+                ):
+                    replident = self.replica_identity(
+                        through.schema, through.table
+                    )
+                    if replident != "i" and replident != "f":
+                        raise ReplicaIdentityError(
+                            f"through_table: {through.table} has "
+                            f"No primary key(s), but has unique key(s). "
+                            f"If you want to use only unique key(s), execute "
+                            f'\'ALTER TABLE "{through.table}" REPLICA '
+                            f'IDENTITY USING INDEX "{index_name}";\''
+                        )
+
+                else:
+                    raise PrimaryKeyNotFoundError(
+                        f"No primary key(s) or No unique key(s) "
+                        f"for through_table: {through.table}"
                     )
 
     def analyze(self) -> None:

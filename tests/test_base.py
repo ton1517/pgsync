@@ -107,6 +107,9 @@ class TestBase(object):
             "contact",
             "contact_item",
             "user",
+            "shop",
+            "product",
+            "shop_product",
         ]
         assert sorted(pg_base.tables("public")) == sorted(tables)
 
@@ -149,6 +152,24 @@ class TestBase(object):
             "book_isbn",
             "id",
         ]
+
+    def test_replica_identity(self, connection):
+        pg_base = Base(connection.engine.url.database)
+        assert pg_base.replica_identity("public", "book") == "d"
+
+    def test_get_composite_unique_index(self, connection):
+        pg_base = Base(connection.engine.url.database)
+        assert pg_base.get_composite_unique_index(
+            "public", "shop_product", "shop", "product"
+        ) == ("unique_idx_shop_product", ["product_id", "shop_id"])
+
+        assert pg_base.get_composite_unique_index(
+            "public", "shop_product", "book", "product"
+        ) == (None, [])
+
+        assert pg_base.get_composite_unique_index(
+            "public", "book", "shop_product", "product"
+        ) == (None, [])
 
     @patch("pgsync.base.logger")
     @patch("pgsync.sync.Base.execute")
@@ -206,9 +227,12 @@ class TestBase(object):
                 "country",
                 "group",
                 "language",
+                "product",
                 "publisher",
                 "rating",
                 "shelf",
+                "shop",
+                "shop_product",
                 "subject",
                 "user",
             ],

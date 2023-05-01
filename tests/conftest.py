@@ -384,6 +384,55 @@ def book_group_cls(base, book_cls, group_cls):
 
 
 @pytest.fixture(scope="session")
+def shop_cls(base):
+    class Shop(base):
+        __tablename__ = "shop"
+        __table_args__ = (UniqueConstraint("name"),)
+        id = sa.Column(sa.Integer, primary_key=True)
+        name = sa.Column(sa.String, nullable=False)
+
+    return Shop
+
+
+@pytest.fixture(scope="session")
+def product_cls(base):
+    class Product(base):
+        __tablename__ = "product"
+        __table_args__ = (UniqueConstraint("name"),)
+        id = sa.Column(sa.Integer, primary_key=True)
+        name = sa.Column(sa.String, nullable=False)
+
+    return Product
+
+
+@pytest.fixture(scope="session")
+def shop_product_cls(base, shop_cls, product_cls):
+    class Product(base):
+        __tablename__ = "shop_product"
+        __table_args__ = (
+            UniqueConstraint(
+                "shop_id", "product_id", name="unique_idx_shop_product"
+            ),
+        )
+        shop_id = sa.Column(
+            sa.Integer, sa.ForeignKey(shop_cls.id), nullable=False
+        )
+        shop = sa.orm.relationship(
+            (shop_cls), backref=sa.orm.backref("shop_product_shops")
+        )
+        product_id = sa.Column(
+            sa.Integer, sa.ForeignKey(product_cls.id), nullable=False
+        )
+        product = sa.orm.relationship(
+            product_cls, backref=sa.orm.backref("products")
+        )
+
+        __mapper_args__ = {"primary_key": [shop_id, product_id]}
+
+    return Product
+
+
+@pytest.fixture(scope="session")
 def model_mapping(
     city_cls,
     country_cls,
@@ -404,6 +453,9 @@ def model_mapping(
     contact_item_cls,
     book_group_cls,
     group_cls,
+    shop_cls,
+    product_cls,
+    shop_product_cls,
 ):
     return {
         "cities": city_cls,
@@ -425,6 +477,9 @@ def model_mapping(
         "contact_items": contact_item_cls,
         "book_groups": book_group_cls,
         "groups": group_cls,
+        "shops": shop_cls,
+        "products": product_cls,
+        "shop_products": shop_product_cls,
     }
 
 

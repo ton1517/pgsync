@@ -11,6 +11,7 @@ from pgsync.base import Base, Payload
 from pgsync.exc import (
     InvalidTGOPError,
     PrimaryKeyNotFoundError,
+    ReplicaIdentityError,
     RDSError,
     SchemaError,
 )
@@ -313,6 +314,83 @@ class TestSync(object):
                     },
                 )
                 assert "hey there" in str(excinfo.value)
+
+        with pytest.raises(PrimaryKeyNotFoundError) as excinfo:
+            Sync(
+                document={
+                    "index": "testdb",
+                    "database": "testdb",
+                    "nodes": {
+                        "table": "shop",
+                        "children": [
+                            {
+                                "table": "product",
+                                "relationship": {
+                                    "type": "one_to_many",
+                                    "variant": "object",
+                                    "through_tables": ["shop_product"],
+                                },
+                            },
+                        ],
+                    },
+                }
+            )
+        assert (
+            "No primary key(s) or No unique key(s) "
+            "for through_table: shop_product" in str(excinfo.value)
+        )
+
+        with pytest.raises(ReplicaIdentityError) as excinfo:
+            Sync(
+                document={
+                    "index": "testdb",
+                    "database": "testdb",
+                    "nodes": {
+                        "table": "shop",
+                        "children": [
+                            {
+                                "table": "product",
+                                "relationship": {
+                                    "type": "one_to_many",
+                                    "variant": "object",
+                                    "through_tables": ["shop_product"],
+                                    "primary_key": ["shop_id", "product_id"],
+                                },
+                            },
+                        ],
+                    },
+                }
+            )
+        assert (
+            "through_table: shop_product has "
+            "No primary key(s), but has unique key(s). "
+            "If you want to use only unique key(s), execute "
+            '\'ALTER TABLE "shop_product" REPLICA IDENTITY '
+            'USING INDEX "unique_idx_shop_product";\'' in str(excinfo.value)
+        )
+
+        with patch("pgsync.sync.Sync.replica_identity") as mock_replica:
+            mock_replica.return_value = "i"
+            Sync(
+                document={
+                    "index": "testdb",
+                    "database": "testdb",
+                    "nodes": {
+                        "table": "shop",
+                        "children": [
+                            {
+                                "table": "product",
+                                "relationship": {
+                                    "type": "one_to_many",
+                                    "variant": "object",
+                                    "through_tables": ["shop_product"],
+                                    "primary_key": ["shop_id", "product_id"],
+                                },
+                            },
+                        ],
+                    },
+                }
+            )
 
         Sync(
             document={

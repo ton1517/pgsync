@@ -28,8 +28,8 @@ BEGIN
 
     IF TG_OP = 'DELETE' THEN
 
-        SELECT primary_keys, indices
-        INTO _primary_keys, _indices
+        SELECT primary_keys, foreign_keys, indices
+        INTO _primary_keys, _foreign_keys, _indices
         FROM _view
         WHERE table_name = TG_TABLE_NAME;
 
@@ -37,7 +37,7 @@ BEGIN
         old_row := (
             SELECT JSONB_OBJECT_AGG(key, value)
             FROM JSON_EACH(old_row)
-            WHERE key = ANY(_primary_keys)
+            WHERE key = ANY(_primary_keys || _foreign_keys)
         );
         xmin := OLD.xmin;
     ELSE

@@ -64,6 +64,7 @@ class Relationship:
         self.variant: str = self.relationship.get("variant")
         self.tables: List[str] = self.relationship.get("through_tables", [])
         self.throughs: List[Node] = []
+        self.primary_key: List[str] = self.relationship.get("primary_key", [])
 
         if not set(self.relationship.keys()).issubset(
             set(RELATIONSHIP_ATTRIBUTES)
@@ -145,7 +146,7 @@ class Node(object):
                     table=through_table,
                     schema=self.schema,
                     parent=self,
-                    primary_key=[],
+                    primary_key=self.relationship.primary_key,
                 )
             )
 
